@@ -48,41 +48,81 @@ def es_valido_generador(tablero, n, fila, col, num):
 # ─────────────────────────────────────────
 
 def generar_tablero_completo(n):
-    # Genera un tablero de sudoku completamente resuelto de tamano n x n
-    # usando backtracking con orden aleatorio de valores.
-    # El orden aleatorio garantiza que cada llamada produzca un tablero distinto.
-    # Retorna el tablero completo como lista de listas.
+    # Genera un tablero de sudoku completamente resuelto de tamano n x n.
+    # Usa una estrategia de llenado por bloques: primero rellena la diagonal
+    # principal de subcuadriculas (que son independientes entre si) con
+    # numeros aleatorios validos, y luego resuelve el resto del tablero
+    # con backtracking. Esto reduce drasticamente el espacio de busqueda
+    # porque los bloques de la diagonal no se afectan entre si, permitiendo
+    # llenarlos de forma independiente y rapida sin necesidad de validar
+    # restricciones entre ellos en esa etapa inicial.
 
+    import math
+    raiz = math.isqrt(n)
     tablero = [[0] * n for _ in range(n)]
 
-    def rellenar(pos):
-        # Funcion interna recursiva que intenta rellenar cada celda del tablero
-        # en orden, de izquierda a derecha y de arriba a abajo.
-
-        if pos == n * n:
-            # Se llenaron todas las celdas sin violar restricciones
-            return True
-
-        fila = pos // n
-        col  = pos  % n
-
-        # Se prueba cada numero del 1 al n en orden aleatorio
+    # Paso 1: se rellenan los bloques de la diagonal principal de forma
+    # independiente ya que no comparten fila ni columna entre si
+    for bloque in range(raiz):
+        inicio = bloque * raiz
         numeros = list(range(1, n + 1))
         random.shuffle(numeros)
+        idx = 0
+        for f in range(inicio, inicio + raiz):
+            for c in range(inicio, inicio + raiz):
+                tablero[f][c] = numeros[idx]
+                idx += 1
 
-        for num in numeros:
-            if es_valido_generador(tablero, n, fila, col, num):
-                tablero[fila][col] = num
+    # Paso 2: se resuelve el resto del tablero con backtracking iterativo
+    # usando una pila explícita en lugar de recursion para evitar errores
+    # de profundidad maxima de pila en tableros grandes como el 16x16
+    celdas_vacias = [
+        (f, c) for f in range(n) for c in range(n) if tablero[f][c] == 0
+    ]
 
-                if rellenar(pos + 1):
-                    return True
+    idx = 0
+    intentos = {}
 
-                # Si no se pudo continuar, se deshace la asignacion
-                tablero[fila][col] = 0
+    while idx < len(celdas_vacias):
+        f, c = celdas_vacias[idx]
 
-        return False
+        if (f, c) not in intentos:
+            intentos[(f, c)] = list(range(1, n + 1))
+            random.shuffle(intentos[(f, c)])
 
-    rellenar(0)
+        encontrado = False
+        while intentos[(f, c)]:
+            num = intentos[(f, c)].pop(0)
+            if es_valido_generador(tablero, n, f, c, num):
+                tablero[f][c] = num
+                encontrado = True
+                break
+
+        if encontrado:
+            idx += 1
+        else:
+            # No hay valor valido, se retrocede a la celda anterior
+            tablero[f][c] = 0
+            del intentos[(f, c)]
+            idx -= 1
+            if idx < 0:
+                # No se pudo generar el tablero, se intenta de nuevo
+                tablero = [[0] * n for _ in range(n)]
+                for bloque in range(raiz):
+                    inicio = bloque * raiz
+                    numeros = list(range(1, n + 1))
+                    random.shuffle(numeros)
+                    pos = 0
+                    for fi in range(inicio, inicio + raiz):
+                        for ci in range(inicio, inicio + raiz):
+                            tablero[fi][ci] = numeros[pos]
+                            pos += 1
+                celdas_vacias = [
+                    (fi, ci) for fi in range(n) for ci in range(n) if tablero[fi][ci] == 0
+                ]
+                idx = 0
+                intentos = {}
+
     return tablero
 
 
@@ -151,7 +191,7 @@ def generar_ejemplos():
         # (tamano, celdas_visibles, nombre_archivo)
         (4,  8,  "sudoku_4x4.txt"),
         (9,  30, "sudoku_9x9.txt"),
-        (16, 80, "sudoku_16x16.txt"),
+        (16, 180, "sudoku_16x16.txt"),
     ]
 
     for n, visibles, nombre in configuraciones:
